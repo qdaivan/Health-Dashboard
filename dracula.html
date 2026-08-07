@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bloodline Analytics - Dracula Healthcare Dashboard</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dracula: {
+              bg: '#282a36',
+              darker: '#1e1f29',
+              card: '#21222c',
+              current: '#44475a',
+              fg: '#f8f8f2',
+              comment: '#6272a4',
+              cyan: '#8be9fd',
+              green: '#50fa7b',
+              orange: '#ffb86c',
+              pink: '#ff79c6',
+              purple: '#bd93f9',
+              red: '#ff5555',
+              yellow: '#f1fa8c'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #1e1f29;
+      color: #f8f8f2;
+      font-family: 'Inter', sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e1f29;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #44475a;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #bd93f9;
+    }
+
+    .dracula-glow {
+      box-shadow: 0 0 15px rgba(189, 147, 249, 0.15);
+    }
+    .dracula-glow-red {
+      box-shadow: 0 0 15px rgba(255, 85, 85, 0.2);
+    }
+    .dracula-glow-cyan {
+      box-shadow: 0 0 15px rgba(139, 233, 253, 0.2);
+    }
+
+    .dracula-card {
+      background-color: #21222c;
+      border: 1px solid #383a59;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .dracula-card:hover {
+      border-color: #6272a4;
+    }
+
+    .badge-emergency { background-color: rgba(255, 85, 85, 0.2); color: #ff5555; border: 1px solid rgba(255, 85, 85, 0.4); }
+    .badge-elective { background-color: rgba(189, 147, 249, 0.2); color: #bd93f9; border: 1px solid rgba(189, 147, 249, 0.4); }
+    .badge-urgent { background-color: rgba(255, 184, 108, 0.2); color: #ffb86c; border: 1px solid rgba(255, 184, 108, 0.4); }
+
+    .badge-normal { background-color: rgba(80, 250, 123, 0.15); color: #50fa7b; border: 1px solid rgba(80, 250, 123, 0.3); }
+    .badge-abnormal { background-color: rgba(255, 85, 85, 0.15); color: #ff5555; border: 1px solid rgba(255, 85, 85, 0.3); }
+    .badge-inconclusive { background-color: rgba(241, 250, 140, 0.15); color: #f1fa8c; border: 1px solid rgba(241, 250, 140, 0.3); }
+
+    /* Custom Input styling */
+    select, input {
+      background-color: #282a36 !important;
+      color: #f8f8f2 !important;
+      border: 1px solid #44475a !important;
+    }
+    select:focus, input:focus {
+      border-color: #bd93f9 !important;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.25);
+    }
+
+    /* Modal Backdrop */
+    .modal-backdrop {
+      background-color: rgba(15, 16, 22, 0.85);
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-dracula-pink selection:text-dracula-darker">
+
+  <header class="bg-dracula-card border-b border-dracula-current px-6 py-3 sticky top-0 z-40 shadow-xl">
+    <div class="max-w-[1700px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+      
+      <!-- Logo & Title -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-dracula-purple to-dracula-pink flex items-center justify-center text-dracula-darker font-bold text-xl shadow-lg shadow-dracula-purple/20">
+          <i class="fa-solid fa-droplet text-dracula-fg"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-xl font-extrabold tracking-tight text-dracula-fg font-mono">BLOODLINE<span class="text-dracula-pink">.</span>BI</h1>
+            <span class="px-2 py-0.5 text-xs rounded bg-dracula-purple/20 text-dracula-purple border border-dracula-purple/30 font-medium">Dracula Analytics v2.6</span>
+          </div>
+          <p class="text-xs text-dracula-comment">Healthcare Intelligence & Patient Care Performance Dashboard</p>
+        </div>
+      </div>
+
+      <!-- Center Nav Tabs -->
+      <nav class="flex items-center bg-dracula-bg p-1 rounded-lg border border-dracula-current">
+        <button id="tab-overview" onclick="switchTab('overview')" class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-darker bg-dracula-purple shadow">
+          <i class="fa-solid fa-chart-pie mr-1.5"></i> Executive Overview
+        </button>
+        <button id="tab-financial" onclick="switchTab('financial')" class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-comment hover:text-dracula-fg">
+          <i class="fa-solid fa-file-invoice-dollar mr-1.5"></i> Billing & Insurance
+        </button>
+        <button id="tab-clinical" onclick="switchTab('clinical')" class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-comment hover:text-dracula-fg">
+          <i class="fa-solid fa-heart-pulse mr-1.5"></i> Clinical Insights
+        </button>
+        <button id="tab-data" onclick="switchTab('data')" class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-comment hover:text-dracula-fg">
+          <i class="fa-solid fa-table mr-1.5"></i> Data Grid
+        </button>
+      </nav>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center space-x-3">
+        <!-- File Upload -->
+        <label class="cursor-pointer bg-dracula-current hover:bg-dracula-comment/40 text-dracula-fg text-xs px-3 py-2 rounded-lg border border-dracula-comment/50 transition flex items-center font-medium shadow-sm">
+          <i class="fa-solid fa-file-excel text-dracula-green mr-2 text-sm"></i> Load XLSX / CSV
+          <input type="file" id="excel-upload" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFileUpload(event)">
+        </label>
+
+        <!-- Export -->
+        <button onclick="window.print()" class="bg-dracula-card hover:bg-dracula-current text-dracula-cyan text-xs px-3 py-2 rounded-lg border border-dracula-cyan/30 transition flex items-center font-medium">
+          <i class="fa-solid fa-download mr-1.5"></i> Export Report
+        </button>
+
+        <!-- Clear Cross Filter -->
+        <button id="reset-filters-btn" onclick="resetAllFilters()" class="hidden bg-dracula-red/20 text-dracula-red hover:bg-dracula-red/30 text-xs px-3 py-2 rounded-lg border border-dracula-red/40 transition flex items-center font-medium">
+          <i class="fa-solid fa-filter-circle-xmark mr-1.5"></i> Reset Slicers
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <section class="bg-dracula-bg border-b border-dracula-current px-6 py-3 shadow-inner">
+    <div class="max-w-[1700px] mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-center">
+      
+      <!-- Slicer 1: Medical Condition -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-stethoscope text-dracula-cyan mr-1"></i> Condition
+        </label>
+        <select id="slicer-condition" onchange="applySlicers()" class="w-full text-xs rounded-lg px-2.5 py-1.5">
+          <option value="ALL">All Conditions</option>
+        </select>
+      </div>
+
+      <!-- Slicer 2: Admission Type -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-hospital-user text-dracula-orange mr-1"></i> Admission Type
+        </label>
+        <select id="slicer-admission" onchange="applySlicers()" class="w-full text-xs rounded-lg px-2.5 py-1.5">
+          <option value="ALL">All Types</option>
+          <option value="Emergency">Emergency</option>
+          <option value="Elective">Elective</option>
+          <option value="Urgent">Urgent</option>
+        </select>
+      </div>
+
+      <!-- Slicer 3: Gender -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-venus-mars text-dracula-pink mr-1"></i> Gender
+        </label>
+        <select id="slicer-gender" onchange="applySlicers()" class="w-full text-xs rounded-lg px-2.5 py-1.5">
+          <option value="ALL">All Genders</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+        </select>
+      </div>
+
+      <!-- Slicer 4: Insurance Provider -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-shield-halved text-dracula-purple mr-1"></i> Insurance
+        </label>
+        <select id="slicer-insurance" onchange="applySlicers()" class="w-full text-xs rounded-lg px-2.5 py-1.5">
+          <option value="ALL">All Insurance Providers</option>
+        </select>
+      </div>
+
+      <!-- Slicer 5: Test Results -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-vial text-dracula-green mr-1"></i> Test Result
+        </label>
+        <select id="slicer-result" onchange="applySlicers()" class="w-full text-xs rounded-lg px-2.5 py-1.5">
+          <option value="ALL">All Results</option>
+          <option value="Normal">Normal</option>
+          <option value="Abnormal">Abnormal</option>
+          <option value="Inconclusive">Inconclusive</option>
+        </select>
+      </div>
+
+      <!-- Slicer 6: Search Box -->
+      <div>
+        <label class="block text-[11px] uppercase tracking-wider font-semibold text-dracula-comment mb-1">
+          <i class="fa-solid fa-magnifying-glass text-dracula-yellow mr-1"></i> Search Patient/Doc
+        </label>
+        <div class="relative">
+          <input type="text" id="slicer-search" oninput="applySlicers()" placeholder="Name, Doctor, Hospital..." class="w-full text-xs rounded-lg pl-8 pr-2.5 py-1.5">
+          <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-dracula-comment text-xs"></i>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <main class="flex-grow max-w-[1700px] w-full mx-auto px-6 py-6 space-y-6">
+
+    <!-- Active Slicer Indicator Banner -->
+    <div id="active-slicer-banner" class="hidden bg-dracula-purple/10 border border-dracula-purple/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
+      <div class="flex items-center space-x-2 text-xs text-dracula-fg">
+        <i class="fa-solid fa-filter text-dracula-purple"></i>
+        <span class="font-semibold text-dracula-purple">Cross-Filter Active:</span>
+        <span id="active-slicer-text" class="text-dracula-fg/90">Filtered dataset active</span>
+      </div>
+      <button onclick="resetAllFilters()" class="text-xs text-dracula-pink hover:underline font-mono">
+        [ Clear All Filters ]
+      </button>
+    </div>
+
+    <!-- Power BI KPI Cards Row -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      
+      <!-- KPI 1: Total Patients -->
+      <div class="dracula-card rounded-xl p-4 relative overflow-hidden group">
+        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-dracula-purple text-4xl">
+          <i class="fa-solid fa-users"></i>
+        </div>
+        <p class="text-xs uppercase font-bold text-dracula-comment tracking-wider">Total Admissions</p>
+        <div class="flex items-baseline space-x-2 mt-2">
+          <h2 id="kpi-total-patients" class="text-2xl font-extrabold text-dracula-fg font-mono">0</h2>
+          <span id="kpi-patients-trend" class="text-xs font-semibold text-dracula-green flex items-center">
+            <i class="fa-solid fa-arrow-up text-[10px] mr-1"></i>+12%
+          </span>
+        </div>
+        <div class="w-full bg-dracula-current/40 h-1 rounded-full mt-3 overflow-hidden">
+          <div class="bg-dracula-purple h-full rounded-full" style="width: 78%"></div>
+        </div>
+        <p class="text-[10px] text-dracula-comment mt-2">Unique patient records in view</p>
+      </div>
+
+      <!-- KPI 2: Total Billing Revenue -->
+      <div class="dracula-card rounded-xl p-4 relative overflow-hidden group">
+        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-dracula-green text-4xl">
+          <i class="fa-solid fa-sack-dollar"></i>
+        </div>
+        <p class="text-xs uppercase font-bold text-dracula-comment tracking-wider">Total Billing ($)</p>
+        <div class="flex items-baseline space-x-2 mt-2">
+          <h2 id="kpi-total-billing" class="text-2xl font-extrabold text-dracula-green font-mono">$0</h2>
+          <span class="text-xs font-semibold text-dracula-green flex items-center">
+            <i class="fa-solid fa-chart-line text-[10px] mr-1"></i>MoM
+          </span>
+        </div>
+        <div class="w-full bg-dracula-current/40 h-1 rounded-full mt-3 overflow-hidden">
+          <div class="bg-dracula-green h-full rounded-full" style="width: 65%"></div>
+        </div>
+        <p class="text-[10px] text-dracula-comment mt-2">Aggregated hospital invoices</p>
+      </div>
+
+      <!-- KPI 3: Avg Billing per Admission -->
+      <div class="dracula-card rounded-xl p-4 relative overflow-hidden group">
+        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-dracula-cyan text-4xl">
+          <i class="fa-solid fa-calculator"></i>
+        </div>
+        <p class="text-xs uppercase font-bold text-dracula-comment tracking-wider">Avg Billing / Patient</p>
+        <div class="flex items-baseline space-x-2 mt-2">
+          <h2 id="kpi-avg-billing" class="text-2xl font-extrabold text-dracula-cyan font-mono">$0</h2>
+        </div>
+        <div class="w-full bg-dracula-current/40 h-1 rounded-full mt-3 overflow-hidden">
+          <div class="bg-dracula-cyan h-full rounded-full" style="width: 82%"></div>
+        </div>
+        <p class="text-[10px] text-dracula-comment mt-2">Mean expenditure per encounter</p>
+      </div>
+
+      <!-- KPI 4: Abnormal Test Rate -->
+      <div class="dracula-card rounded-xl p-4 relative overflow-hidden group">
+        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-dracula-red text-4xl">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <p class="text-xs uppercase font-bold text-dracula-comment tracking-wider">Abnormal Result Rate</p>
+        <div class="flex items-baseline space-x-2 mt-2">
+          <h2 id="kpi-abnormal-rate" class="text-2xl font-extrabold text-dracula-red font-mono">0%</h2>
+          <span class="text-xs font-semibold text-dracula-red flex items-center">
+            <i class="fa-solid fa-shield-virus text-[10px] mr-1"></i>Alert
+          </span>
+        </div>
+        <div class="w-full bg-dracula-current/40 h-1 rounded-full mt-3 overflow-hidden">
+          <div id="kpi-abnormal-bar" class="bg-dracula-red h-full rounded-full" style="width: 30%"></div>
+        </div>
+        <p class="text-[10px] text-dracula-comment mt-2">Requires immediate clinical triage</p>
+      </div>
+
+      <!-- KPI 5: Avg Length of Stay (ALOS) -->
+      <div class="dracula-card rounded-xl p-4 relative overflow-hidden group">
+        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition text-dracula-yellow text-4xl">
+          <i class="fa-solid fa-bed"></i>
+        </div>
+        <p class="text-xs uppercase font-bold text-dracula-comment tracking-wider">Avg Length of Stay</p>
+        <div class="flex items-baseline space-x-2 mt-2">
+          <h2 id="kpi-avg-stay" class="text-2xl font-extrabold text-dracula-yellow font-mono">0 Days</h2>
+        </div>
+        <div class="w-full bg-dracula-current/40 h-1 rounded-full mt-3 overflow-hidden">
+          <div class="bg-dracula-yellow h-full rounded-full" style="width: 55%"></div>
+        </div>
+        <p class="text-[10px] text-dracula-comment mt-2">Days between admission & discharge</p>
+      </div>
+
+    </div>
+
+    <div id="view-overview" class="space-y-6">
+      
+      <!-- Row 1: Admissions Timeline & Condition Distribution -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Timeline Trend Chart (2 cols) -->
+        <div class="lg:col-span-2 dracula-card rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-dracula-fg flex items-center">
+                <i class="fa-solid fa-chart-line text-dracula-purple mr-2"></i> Admission Trends & Revenue Timeline
+              </h3>
+              <p class="text-xs text-dracula-comment">Monthly patient intake volume vs total billed revenue</p>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-1 rounded bg-dracula-current text-dracula-cyan border border-dracula-comment/30">Click points to cross-filter</span>
+          </div>
+          <div class="relative flex-grow min-h-[280px]">
+            <canvas id="chart-admission-trend"></canvas>
+          </div>
+        </div>
+
+        <!-- Medical Condition Breakdown Doughnut (1 col) -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-dracula-fg flex items-center">
+                <i class="fa-solid fa-notes-medical text-dracula-pink mr-2"></i> Medical Conditions
+              </h3>
+              <p class="text-xs text-dracula-comment">Patient count by primary diagnosis</p>
+            </div>
+            <span class="text-[10px] font-mono text-dracula-pink">Cross-Filter</span>
+          </div>
+          <div class="relative flex-grow min-h-[280px] flex items-center justify-center">
+            <canvas id="chart-conditions"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Row 2: Admission Type Financials & Top Doctor Matrix & Test Results -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Chart 3: Admission Type vs Revenue -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-dracula-fg flex items-center">
+              <i class="fa-solid fa-truck-medical text-dracula-orange mr-2"></i> Revenue by Admission Type
+            </h3>
+            <span class="text-xs text-dracula-orange font-mono">Bar Visual</span>
+          </div>
+          <div class="relative flex-grow min-h-[250px]">
+            <canvas id="chart-admission-type"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 4: Top Doctors Performance -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-dracula-fg flex items-center">
+              <i class="fa-solid fa-user-doctor text-dracula-cyan mr-2"></i> Top Attending Physicians
+            </h3>
+            <span class="text-xs text-dracula-cyan font-mono">By Patient Count</span>
+          </div>
+          <div class="relative flex-grow min-h-[250px]">
+            <canvas id="chart-doctors"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 5: Test Results Distribution -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-dracula-fg flex items-center">
+              <i class="fa-solid fa-microscope text-dracula-green mr-2"></i> Clinical Test Results
+            </h3>
+            <span class="text-xs text-dracula-green font-mono">Triage Status</span>
+          </div>
+          <div class="relative flex-grow min-h-[250px]">
+            <canvas id="chart-test-results"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="view-financial" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Insurance Provider Revenue Split -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <h3 class="text-sm font-bold text-dracula-fg mb-1 flex items-center">
+            <i class="fa-solid fa-building-columns text-dracula-purple mr-2"></i> Billing Volume by Insurance Provider
+          </h3>
+          <p class="text-xs text-dracula-comment mb-4">Total financial exposure and reimbursement share</p>
+          <div class="relative flex-grow min-h-[300px]">
+            <canvas id="chart-insurance-financials"></canvas>
+          </div>
+        </div>
+
+        <!-- Hospital / Facility Billing Leaderboard -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <h3 class="text-sm font-bold text-dracula-fg mb-1 flex items-center">
+            <i class="fa-solid fa-hospital text-dracula-pink mr-2"></i> Hospital Center Revenue Comparison
+          </h3>
+          <p class="text-xs text-dracula-comment mb-4">Billed revenue across medical facilities</p>
+          <div class="relative flex-grow min-h-[300px]">
+            <canvas id="chart-hospital-financials"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="view-clinical" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Age Demographics & Risk Pyramid -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <h3 class="text-sm font-bold text-dracula-fg mb-1 flex items-center">
+            <i class="fa-solid fa-users-rectangle text-dracula-yellow mr-2"></i> Patient Age Bracket Distribution
+          </h3>
+          <p class="text-xs text-dracula-comment mb-4">Demographics grouped by 15-year intervals</p>
+          <div class="relative flex-grow min-h-[300px]">
+            <canvas id="chart-age-demographics"></canvas>
+          </div>
+        </div>
+
+        <!-- Blood Type Risk Matrix -->
+        <div class="dracula-card rounded-xl p-5 flex flex-col">
+          <h3 class="text-sm font-bold text-dracula-fg mb-1 flex items-center">
+            <i class="fa-solid fa-droplet text-dracula-red mr-2"></i> Patient Distribution by Blood Group
+          </h3>
+          <p class="text-xs text-dracula-comment mb-4">Blood group inventory requirements and breakdown</p>
+          <div class="relative flex-grow min-h-[300px]">
+            <canvas id="chart-blood-type"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="view-data" class="space-y-4">
+      <div class="dracula-card rounded-xl p-5 shadow-2xl">
+        
+        <!-- Table Header & Controls -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4 border-b border-dracula-current">
+          <div>
+            <h3 class="text-base font-bold text-dracula-fg flex items-center">
+              <i class="fa-solid fa-database text-dracula-purple mr-2"></i> Patient Admissions Master Register
+            </h3>
+            <p class="text-xs text-dracula-comment">Click any row to open Dracula Clinical Dossier & Patient Timeline</p>
+          </div>
+          
+          <div class="flex items-center space-x-3 text-xs">
+            <span class="text-dracula-comment font-mono">Showing <span id="table-count" class="text-dracula-purple font-bold">0</span> records</span>
+            <button onclick="exportTableToCSV()" class="bg-dracula-current hover:bg-dracula-comment/30 text-dracula-fg px-3 py-1.5 rounded-lg border border-dracula-comment/40 transition">
+              <i class="fa-solid fa-file-csv text-dracula-green mr-1"></i> Export Data CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-dracula-fg">
+            <thead class="bg-dracula-bg uppercase tracking-wider text-dracula-comment font-mono border-b border-dracula-current">
+              <tr>
+                <th class="py-3 px-3">Patient Name</th>
+                <th class="py-3 px-3">Age / Gender</th>
+                <th class="py-3 px-3">Blood Type</th>
+                <th class="py-3 px-3">Condition</th>
+                <th class="py-3 px-3">Admission Date</th>
+                <th class="py-3 px-3">Doctor</th>
+                <th class="py-3 px-3">Hospital</th>
+                <th class="py-3 px-3">Type</th>
+                <th class="py-3 px-3 text-right">Billing ($)</th>
+                <th class="py-3 px-3 text-center">Test Result</th>
+              </tr>
+            </thead>
+            <tbody id="patient-table-body" class="divide-y divide-dracula-current/50">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="flex items-center justify-between pt-4 mt-4 border-t border-dracula-current text-xs text-dracula-comment">
+          <div>
+            <span>Page <span id="page-num" class="text-dracula-purple font-bold">1</span> of <span id="total-pages">1</span></span>
+          </div>
+          <div class="flex space-x-2">
+            <button id="btn-prev-page" onclick="changePage(-1)" class="px-3 py-1.5 rounded bg-dracula-bg border border-dracula-current hover:bg-dracula-current text-dracula-fg disabled:opacity-30">
+              <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+            </button>
+            <button id="btn-next-page" onclick="changePage(1)" class="px-3 py-1.5 rounded bg-dracula-bg border border-dracula-current hover:bg-dracula-current text-dracula-fg disabled:opacity-30">
+              Next <i class="fa-solid fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <div id="patient-modal" class="fixed inset-0 z-50 hidden modal-backdrop flex items-center justify-center p-4">
+    <div class="dracula-card rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-dracula-purple/50 relative transform transition-all">
+      
+      <!-- Close Button -->
+      <button onclick="closeModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-dracula-bg hover:bg-dracula-current text-dracula-comment hover:text-dracula-red flex items-center justify-center transition">
+        <i class="fa-solid fa-xmark text-base"></i>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="flex items-start space-x-4 border-b border-dracula-current pb-4">
+        <div id="modal-avatar" class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-dracula-purple to-dracula-pink flex items-center justify-center text-2xl font-bold text-dracula-darker font-mono shadow-lg">
+          P
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h2 id="modal-patient-name" class="text-xl font-extrabold text-dracula-fg">Patient Name</h2>
+            <span id="modal-admission-badge" class="px-2 py-0.5 text-[10px] font-bold uppercase rounded badge-emergency">Emergency</span>
+          </div>
+          <p id="modal-patient-meta" class="text-xs text-dracula-comment mt-1">45 Yrs Old • Male • Blood Type O+</p>
+        </div>
+      </div>
+
+      <!-- Dossier Details Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Medical Condition</p>
+          <p id="modal-condition" class="text-xs font-semibold text-dracula-pink mt-1">Diabetes</p>
+        </div>
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Attending Doctor</p>
+          <p id="modal-doctor" class="text-xs font-semibold text-dracula-cyan mt-1">Dr. Van Helsing</p>
+        </div>
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Hospital Facility</p>
+          <p id="modal-hospital" class="text-xs font-semibold text-dracula-purple mt-1">Transylvania General</p>
+        </div>
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Admission Date</p>
+          <p id="modal-admission-date" class="text-xs font-semibold text-dracula-fg mt-1">2025-04-12</p>
+        </div>
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Discharge Date</p>
+          <p id="modal-discharge-date" class="text-xs font-semibold text-dracula-fg mt-1">2025-04-18</p>
+        </div>
+        <div class="bg-dracula-bg p-3 rounded-xl border border-dracula-current">
+          <p class="text-[10px] uppercase font-bold text-dracula-comment">Insurance Provider</p>
+          <p id="modal-insurance" class="text-xs font-semibold text-dracula-yellow mt-1">Medicare</p>
+        </div>
+      </div>
+
+      <!-- Financial & Medication Details -->
+      <div class="bg-dracula-darker p-4 rounded-xl border border-dracula-current space-y-3">
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-dracula-comment"><i class="fa-solid fa-pills text-dracula-green mr-1"></i> Prescribed Medication:</span>
+          <span id="modal-medication" class="font-semibold text-dracula-green">Aspirin, Insulin</span>
+        </div>
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-dracula-comment"><i class="fa-solid fa-vial text-dracula-red mr-1"></i> Diagnostic Test Result:</span>
+          <span id="modal-test-result" class="font-bold badge-abnormal px-2 py-0.5 rounded text-[10px]">Abnormal</span>
+        </div>
+        <div class="flex justify-between items-center text-xs pt-2 border-t border-dracula-current">
+          <span class="text-dracula-comment font-bold">Total Invoiced Billing Amount:</span>
+          <span id="modal-billing" class="text-lg font-extrabold text-dracula-green font-mono">$24,850.00</span>
+        </div>
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="flex justify-end space-x-3 pt-2">
+        <button onclick="closeModal()" class="px-4 py-2 text-xs font-semibold rounded-lg bg-dracula-current hover:bg-dracula-comment/30 text-dracula-fg transition">
+          Close Dossier
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Dracula Chart JS Color Constants
+    const DRACULA_COLORS = {
+      purple: '#bd93f9',
+      pink: '#ff79c6',
+      cyan: '#8be9fd',
+      green: '#50fa7b',
+      orange: '#ffb86c',
+      red: '#ff5555',
+      yellow: '#f1fa8c',
+      comment: '#6272a4',
+      bg: '#282a36',
+      current: '#44475a'
+    };
+
+    // Chart instances store
+    let chartInstances = {};
+
+    // State Variables
+    let rawDataset = [];
+    let filteredDataset = [];
+    let currentPage = 1;
+    const itemsPerPage = 12;
+
+    // Cross Filter Tracking State
+    let activeCrossFilters = {
+      condition: null,
+      admissionType: null,
+      testResult: null
+    };
+
+    function generateDataset() {
+      const names = [
+        "Vlad Dracula", "Mina Harker", "Jonathan Harker", "Lucy Westenra", "Abraham Van Helsing",
+        "John Seward", "Arthur Holmwood", "Quincey Morris", "Carmilla Karnstein", "Renfield Fly",
+        "Victor Frankenstein", "Elizabeth Lavenza", "Henry Clerval", "Robert Walton", "Dorian Gray",
+        "Basil Hallward", "Lord Henry", "Henry Jekyll", "Edward Hyde", "Gabriel Utterson",
+        "Ebenezer Scrooge", "Jacob Marley", "Ichabod Crane", "Katrina Van Tassel", "Roderick Usher",
+        "Madeline Usher", "Prospero Red", "Ligeia Tremaine", "Morella Lock", "Berenice Egaeus",
+        "Auguste Dupin", "Arthur Pym", "William Wilson", "C. Auguste", "H.P. Lovecraft",
+        "Randolph Carter", "Charles Ward", "Herbert West", "Richard Pickman", "Asenath Waite"
+      ];
+
+      const conditions = ["Diabetes", "Hypertension", "Asthma", "Arthritis", "Cancer", "Obesity", "Heart Disease"];
+      const doctors = ["Dr. Van Helsing", "Dr. John Seward", "Dr. Frankenstein", "Dr. Jekyll", "Dr. Moreau", "Dr. Caligari"];
+      const hospitals = ["Transylvania General", "St. Jude Medical", "Arkham Regional", "Ravenloft Health", "Castle Health"];
+      const insuranceProviders = ["Medicare", "Blue Cross", "Cigna", "Aetna", "UnitedHealthcare"];
+      const admissionTypes = ["Emergency", "Elective", "Urgent"];
+      const medications = ["Aspirin", "Ibuprofen", "Penicillin", "Insulin", "Metformin", "Lipitor", "Paracetamol"];
+      const testResults = ["Normal", "Abnormal", "Inconclusive"];
+      const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+      const data = [];
+      const startDate = new Date(2024, 0, 1);
+      const endDate = new Date(2026, 5, 30);
+
+      for (let i = 1; i <= 600; i++) {
+        const randomName = names[Math.floor(Math.random() * names.length)] + " " + String.fromCharCode(65 + (i % 26)) + ".";
+        const age = Math.floor(Math.random() * 65) + 18;
+        const gender = Math.random() > 0.5 ? "Male" : "Female";
+        const condition = conditions[Math.floor(Math.random() * conditions.length)];
+        const doctor = doctors[Math.floor(Math.random() * doctors.length)];
+        const hospital = hospitals[Math.floor(Math.random() * hospitals.length)];
+        const insurance = insuranceProviders[Math.floor(Math.random() * insuranceProviders.length)];
+        const admissionType = admissionTypes[Math.floor(Math.random() * admissionTypes.length)];
+        const medication = medications[Math.floor(Math.random() * medications.length)];
+        const testResult = testResults[Math.floor(Math.random() * testResults.length)];
+        const bloodType = bloodTypes[Math.floor(Math.random() * bloodTypes.length)];
+
+        // Generate Random Admission Date
+        const admissionDateObj = new Date(startDate.getTime() + Math.random() * (endDate.getTime() - startDate.getTime()));
+        const admissionDate = admissionDateObj.toISOString().split('T')[0];
+
+        // Generate Discharge Date (1 to 14 days stay)
+        const stayDays = Math.floor(Math.random() * 14) + 1;
+        const dischargeDateObj = new Date(admissionDateObj);
+        dischargeDateObj.setDate(dischargeDateObj.getDate() + stayDays);
+        const dischargeDate = dischargeDateObj.toISOString().split('T')[0];
+
+        // Billing Amount ($1,500 to $48,000)
+        const billing = Math.round((Math.random() * 46500 + 1500) * 100) / 100;
+
+        data.push({
+          id: i,
+          name: randomName,
+          age: age,
+          gender: gender,
+          bloodType: bloodType,
+          medicalCondition: condition,
+          admissionDate: admissionDate,
+          dischargeDate: dischargeDate,
+          lengthOfStay: stayDays,
+          doctor: doctor,
+          hospital: hospital,
+          insuranceProvider: insurance,
+          billingAmount: billing,
+          roomNumber: Math.floor(Math.random() * 400) + 100,
+          admissionType: admissionType,
+          medication: medication,
+          testResult: testResult
+        });
+      }
+
+      return data;
+    }
+
+    window.onload = function() {
+      rawDataset = generateDataset();
+      filteredDataset = [...rawDataset];
+
+      populateSlicerOptions();
+      initializeCharts();
+      updateDashboard();
+    };
+
+    function populateSlicerOptions() {
+      const conditions = [...new Set(rawDataset.map(d => d.medicalCondition))].sort();
+      const insurances = [...new Set(rawDataset.map(d => d.insuranceProvider))].sort();
+
+      const conditionSel = document.getElementById('slicer-condition');
+      conditions.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        conditionSel.appendChild(opt);
+      });
+
+      const insuranceSel = document.getElementById('slicer-insurance');
+      insurances.forEach(ins => {
+        const opt = document.createElement('option');
+        opt.value = ins;
+        opt.textContent = ins;
+        insuranceSel.appendChild(opt);
+      });
+    }
+
+    function applySlicers() {
+      const condVal = document.getElementById('slicer-condition').value;
+      const admVal = document.getElementById('slicer-admission').value;
+      const genVal = document.getElementById('slicer-gender').value;
+      const insVal = document.getElementById('slicer-insurance').value;
+      const resVal = document.getElementById('slicer-result').value;
+      const searchVal = document.getElementById('slicer-search').value.toLowerCase().trim();
+
+      filteredDataset = rawDataset.filter(item => {
+        if (condVal !== 'ALL' && item.medicalCondition !== condVal) return false;
+        if (admVal !== 'ALL' && item.admissionType !== admVal) return false;
+        if (genVal !== 'ALL' && item.gender !== genVal) return false;
+        if (insVal !== 'ALL' && item.insuranceProvider !== insVal) return false;
+        if (resVal !== 'ALL' && item.testResult !== resVal) return false;
+
+        if (activeCrossFilters.condition && item.medicalCondition !== activeCrossFilters.condition) return false;
+        if (activeCrossFilters.admissionType && item.admissionType !== activeCrossFilters.admissionType) return false;
+        if (activeCrossFilters.testResult && item.testResult !== activeCrossFilters.testResult) return false;
+
+        if (searchVal) {
+          const matchName = item.name.toLowerCase().includes(searchVal);
+          const matchDoc = item.doctor.toLowerCase().includes(searchVal);
+          const matchHosp = item.hospital.toLowerCase().includes(searchVal);
+          if (!matchName && !matchDoc && !matchHosp) return false;
+        }
+
+        return true;
+      });
+
+      // Update Banner Indicator
+      const isFiltered = filteredDataset.length < rawDataset.length;
+      const banner = document.getElementById('active-slicer-banner');
+      const resetBtn = document.getElementById('reset-filters-btn');
+      
+      if (isFiltered) {
+        banner.classList.remove('hidden');
+        resetBtn.classList.remove('hidden');
+        document.getElementById('active-slicer-text').textContent = 
+          `Displaying ${filteredDataset.length} of ${rawDataset.length} patients based on active slicers.`;
+      } else {
+        banner.classList.add('hidden');
+        resetBtn.classList.add('hidden');
+      }
+
+      currentPage = 1;
+      updateDashboard();
+    }
+
+    function resetAllFilters() {
+      document.getElementById('slicer-condition').value = 'ALL';
+      document.getElementById('slicer-admission').value = 'ALL';
+      document.getElementById('slicer-gender').value = 'ALL';
+      document.getElementById('slicer-insurance').value = 'ALL';
+      document.getElementById('slicer-result').value = 'ALL';
+      document.getElementById('slicer-search').value = '';
+
+      activeCrossFilters = { condition: null, admissionType: null, testResult: null };
+
+      applySlicers();
+    }
+
+    function updateDashboard() {
+      updateKPIs();
+      renderTable();
+      updateChartsData();
+    }
+
+    function updateKPIs() {
+      const total = filteredDataset.length;
+      const totalBilling = filteredDataset.reduce((sum, d) => sum + d.billingAmount, 0);
+      const avgBilling = total > 0 ? totalBilling / total : 0;
+      
+      const abnormalCount = filteredDataset.filter(d => d.testResult === 'Abnormal').length;
+      const abnormalRate = total > 0 ? ((abnormalCount / total) * 100).toFixed(1) : '0.0';
+
+      const totalStay = filteredDataset.reduce((sum, d) => sum + d.lengthOfStay, 0);
+      const avgStay = total > 0 ? (totalStay / total).toFixed(1) : '0.0';
+
+      document.getElementById('kpi-total-patients').textContent = total.toLocaleString();
+      document.getElementById('kpi-total-billing').textContent = '$' + Math.round(totalBilling).toLocaleString();
+      document.getElementById('kpi-avg-billing').textContent = '$' + Math.round(avgBilling).toLocaleString();
+      document.getElementById('kpi-abnormal-rate').textContent = abnormalRate + '%';
+      document.getElementById('kpi-avg-stay').textContent = avgStay + ' Days';
+
+      document.getElementById('kpi-abnormal-bar').style.width = Math.min(abnormalRate, 100) + '%';
+    }
+
+    function initializeCharts() {
+      Chart.defaults.color = DRACULA_COLORS.comment;
+      Chart.defaults.font.family = 'Inter';
+
+      // 1. Admission Trend Line/Area Chart
+      const ctxTrend = document.getElementById('chart-admission-trend').getContext('2d');
+      chartInstances.trend = new Chart(ctxTrend, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: true, labels: { color: DRACULA_COLORS.fg } } },
+          scales: {
+            x: { grid: { color: DRACULA_COLORS.current } },
+            y: { grid: { color: DRACULA_COLORS.current }, ticks: { color: DRACULA_COLORS.comment } }
+          }
+        }
+      });
+
+      // 2. Conditions Doughnut
+      const ctxConditions = document.getElementById('chart-conditions').getContext('2d');
+      chartInstances.conditions = new Chart(ctxConditions, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (evt, activeEls) => {
+            if (activeEls.length > 0) {
+              const index = activeEls[0].index;
+              const label = chartInstances.conditions.data.labels[index];
+              activeCrossFilters.condition = activeCrossFilters.condition === label ? null : label;
+              applySlicers();
+            }
+          },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: DRACULA_COLORS.fg, boxWidth: 12 } }
+          }
+        }
+      });
+
+      // 3. Admission Type Bar
+      const ctxAdmType = document.getElementById('chart-admission-type').getContext('2d');
+      chartInstances.admissionType = new Chart(ctxAdmType, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (evt, activeEls) => {
+            if (activeEls.length > 0) {
+              const index = activeEls[0].index;
+              const label = chartInstances.admissionType.data.labels[index];
+              activeCrossFilters.admissionType = activeCrossFilters.admissionType === label ? null : label;
+              applySlicers();
+            }
+          },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: DRACULA_COLORS.current } }
+          }
+        }
+      });
+
+      // 4. Top Doctors Bar
+      const ctxDoctors = document.getElementById('chart-doctors').getContext('2d');
+      chartInstances.doctors = new Chart(ctxDoctors, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: DRACULA_COLORS.current } },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+
+      // 5. Test Results Pie Chart
+      const ctxTest = document.getElementById('chart-test-results').getContext('2d');
+      chartInstances.testResults = new Chart(ctxTest, {
+        type: 'pie',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (evt, activeEls) => {
+            if (activeEls.length > 0) {
+              const index = activeEls[0].index;
+              const label = chartInstances.testResults.data.labels[index];
+              activeCrossFilters.testResult = activeCrossFilters.testResult === label ? null : label;
+              applySlicers();
+            }
+          },
+          plugins: { legend: { position: 'bottom', labels: { color: DRACULA_COLORS.fg } } }
+        }
+      });
+
+      // 6. Insurance Financials Chart
+      const ctxIns = document.getElementById('chart-insurance-financials').getContext('2d');
+      chartInstances.insurance = new Chart(ctxIns, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: DRACULA_COLORS.current } },
+            y: { grid: { color: DRACULA_COLORS.current } }
+          }
+        }
+      });
+
+      // 7. Hospital Financials
+      const ctxHosp = document.getElementById('chart-hospital-financials').getContext('2d');
+      chartInstances.hospital = new Chart(ctxHosp, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: DRACULA_COLORS.current } },
+            y: { grid: { color: DRACULA_COLORS.current } }
+          }
+        }
+      });
+
+      // 8. Age Demographics Chart
+      const ctxAge = document.getElementById('chart-age-demographics').getContext('2d');
+      chartInstances.ageDemo = new Chart(ctxAge, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: DRACULA_COLORS.current } }
+          }
+        }
+      });
+
+      // 9. Blood Type Distribution
+      const ctxBlood = document.getElementById('chart-blood-type').getContext('2d');
+      chartInstances.bloodType = new Chart(ctxBlood, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: DRACULA_COLORS.current } }
+          }
+        }
+      });
+    }
+
+    function updateChartsData() {
+      // 1. Admission Trend
+      const monthMap = {};
+      filteredDataset.forEach(d => {
+        const ym = d.admissionDate.substring(0, 7); // YYYY-MM
+        if (!monthMap[ym]) monthMap[ym] = { count: 0, billing: 0 };
+        monthMap[ym].count += 1;
+        monthMap[ym].billing += d.billingAmount;
+      });
+
+      const sortedMonths = Object.keys(monthMap).sort();
+      chartInstances.trend.data = {
+        labels: sortedMonths,
+        datasets: [
+          {
+            label: 'Patient Count',
+            data: sortedMonths.map(m => monthMap[m].count),
+            borderColor: DRACULA_COLORS.purple,
+            backgroundColor: 'rgba(189, 147, 249, 0.15)',
+            fill: true,
+            tension: 0.35,
+            yAxisID: 'y'
+          }
+        ]
+      };
+      chartInstances.trend.update();
+
+      // 2. Conditions Breakdown
+      const condCounts = {};
+      filteredDataset.forEach(d => {
+        condCounts[d.medicalCondition] = (condCounts[d.medicalCondition] || 0) + 1;
+      });
+      chartInstances.conditions.data = {
+        labels: Object.keys(condCounts),
+        datasets: [{
+          data: Object.values(condCounts),
+          backgroundColor: [
+            DRACULA_COLORS.purple, DRACULA_COLORS.pink, DRACULA_COLORS.cyan,
+            DRACULA_COLORS.green, DRACULA_COLORS.orange, DRACULA_COLORS.red, DRACULA_COLORS.yellow
+          ],
+          borderWidth: 2,
+          borderColor: DRACULA_COLORS.bg
+        }]
+      };
+      chartInstances.conditions.update();
+
+      // 3. Admission Types
+      const typeRevenue = { Emergency: 0, Elective: 0, Urgent: 0 };
+      filteredDataset.forEach(d => {
+        if (typeRevenue[d.admissionType] !== undefined) {
+          typeRevenue[d.admissionType] += d.billingAmount;
+        }
+      });
+      chartInstances.admissionType.data = {
+        labels: Object.keys(typeRevenue),
+        datasets: [{
+          data: Object.values(typeRevenue),
+          backgroundColor: [DRACULA_COLORS.red, DRACULA_COLORS.purple, DRACULA_COLORS.orange],
+          borderRadius: 6
+        }]
+      };
+      chartInstances.admissionType.update();
+
+      // 4. Doctors Leaderboard
+      const docCounts = {};
+      filteredDataset.forEach(d => {
+        docCounts[d.doctor] = (docCounts[d.doctor] || 0) + 1;
+      });
+      const topDocs = Object.entries(docCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+      chartInstances.doctors.data = {
+        labels: topDocs.map(d => d[0]),
+        datasets: [{
+          data: topDocs.map(d => d[1]),
+          backgroundColor: DRACULA_COLORS.cyan,
+          borderRadius: 6
+        }]
+      };
+      chartInstances.doctors.update();
+
+      // 5. Test Results Breakdown
+      const resCounts = { Normal: 0, Abnormal: 0, Inconclusive: 0 };
+      filteredDataset.forEach(d => {
+        if (resCounts[d.testResult] !== undefined) resCounts[d.testResult]++;
+      });
+      chartInstances.testResults.data = {
+        labels: Object.keys(resCounts),
+        datasets: [{
+          data: Object.values(resCounts),
+          backgroundColor: [DRACULA_COLORS.green, DRACULA_COLORS.red, DRACULA_COLORS.yellow],
+          borderWidth: 2,
+          borderColor: DRACULA_COLORS.bg
+        }]
+      };
+      chartInstances.testResults.update();
+
+      // 6. Insurance Financials
+      const insMap = {};
+      filteredDataset.forEach(d => {
+        insMap[d.insuranceProvider] = (insMap[d.insuranceProvider] || 0) + d.billingAmount;
+      });
+      chartInstances.insurance.data = {
+        labels: Object.keys(insMap),
+        datasets: [{
+          label: 'Total Billing ($)',
+          data: Object.values(insMap),
+          backgroundColor: DRACULA_COLORS.purple,
+          borderRadius: 6
+        }]
+      };
+      chartInstances.insurance.update();
+
+      // 7. Hospital Financials
+      const hospMap = {};
+      filteredDataset.forEach(d => {
+        hospMap[d.hospital] = (hospMap[d.hospital] || 0) + d.billingAmount;
+      });
+      chartInstances.hospital.data = {
+        labels: Object.keys(hospMap),
+        datasets: [{
+          label: 'Hospital Revenue ($)',
+          data: Object.values(hospMap),
+          backgroundColor: DRACULA_COLORS.pink,
+          borderRadius: 6
+        }]
+      };
+      chartInstances.hospital.update();
+
+      // 8. Age Demographics
+      const ageBrackets = { '18-30': 0, '31-45': 0, '46-60': 0, '61+': 0 };
+      filteredDataset.forEach(d => {
+        if (d.age <= 30) ageBrackets['18-30']++;
+        else if (d.age <= 45) ageBrackets['31-45']++;
+        else if (d.age <= 60) ageBrackets['46-60']++;
+        else ageBrackets['61+']++;
+      });
+      chartInstances.ageDemo.data = {
+        labels: Object.keys(ageBrackets),
+        datasets: [{
+          data: Object.values(ageBrackets),
+          backgroundColor: DRACULA_COLORS.yellow,
+          borderRadius: 6
+        }]
+      };
+      chartInstances.ageDemo.update();
+
+      // 9. Blood Type
+      const bloodMap = {};
+      filteredDataset.forEach(d => {
+        bloodMap[d.bloodType] = (bloodMap[d.bloodType] || 0) + 1;
+      });
+      chartInstances.bloodType.data = {
+        labels: Object.keys(bloodMap),
+        datasets: [{
+          data: Object.values(bloodMap),
+          backgroundColor: DRACULA_COLORS.red,
+          borderRadius: 6
+        }]
+      };
+      chartInstances.bloodType.update();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('patient-table-body');
+      tbody.innerHTML = '';
+
+      document.getElementById('table-count').textContent = filteredDataset.length;
+
+      const totalPages = Math.ceil(filteredDataset.length / itemsPerPage) || 1;
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      document.getElementById('page-num').textContent = currentPage;
+      document.getElementById('total-pages').textContent = totalPages;
+
+      document.getElementById('btn-prev-page').disabled = currentPage === 1;
+      document.getElementById('btn-next-page').disabled = currentPage === totalPages;
+
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const pageItems = filteredDataset.slice(startIndex, startIndex + itemsPerPage);
+
+      if (pageItems.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="10" class="py-8 text-center text-dracula-comment italic">
+              <i class="fa-solid fa-ghost text-2xl mb-2 block"></i> No patient records match the current slicer criteria.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      pageItems.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-dracula-current/50 cursor-pointer transition';
+        tr.onclick = () => openModal(item);
+
+        let typeBadgeClass = 'badge-elective';
+        if (item.admissionType === 'Emergency') typeBadgeClass = 'badge-emergency';
+        if (item.admissionType === 'Urgent') typeBadgeClass = 'badge-urgent';
+
+        let resultBadgeClass = 'badge-normal';
+        if (item.testResult === 'Abnormal') resultBadgeClass = 'badge-abnormal';
+        if (item.testResult === 'Inconclusive') resultBadgeClass = 'badge-inconclusive';
+
+        tr.innerHTML = `
+          <td class="py-3 px-3 font-semibold text-dracula-fg">${item.name}</td>
+          <td class="py-3 px-3 text-dracula-comment">${item.age} / ${item.gender}</td>
+          <td class="py-3 px-3"><span class="font-mono text-dracula-red font-bold">${item.bloodType}</span></td>
+          <td class="py-3 px-3 text-dracula-pink font-medium">${item.medicalCondition}</td>
+          <td class="py-3 px-3 text-dracula-comment font-mono">${item.admissionDate}</td>
+          <td class="py-3 px-3 text-dracula-cyan">${item.doctor}</td>
+          <td class="py-3 px-3 text-dracula-comment">${item.hospital}</td>
+          <td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${typeBadgeClass}">${item.admissionType}</span></td>
+          <td class="py-3 px-3 text-right font-mono font-bold text-dracula-green">$${item.billingAmount.toLocaleString()}</td>
+          <td class="py-3 px-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${resultBadgeClass}">${item.testResult}</span></td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      renderTable();
+    }
+
+    function openModal(item) {
+      document.getElementById('modal-avatar').textContent = item.name.charAt(0);
+      document.getElementById('modal-patient-name').textContent = item.name;
+      document.getElementById('modal-patient-meta').textContent = `${item.age} Yrs Old • ${item.gender} • Blood Group ${item.bloodType}`;
+
+      const admBadge = document.getElementById('modal-admission-badge');
+      admBadge.textContent = item.admissionType;
+      admBadge.className = `px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+        item.admissionType === 'Emergency' ? 'badge-emergency' : item.admissionType === 'Urgent' ? 'badge-urgent' : 'badge-elective'
+      }`;
+
+      document.getElementById('modal-condition').textContent = item.medicalCondition;
+      document.getElementById('modal-doctor').textContent = item.doctor;
+      document.getElementById('modal-hospital').textContent = item.hospital;
+      document.getElementById('modal-admission-date').textContent = item.admissionDate;
+      document.getElementById('modal-discharge-date').textContent = item.dischargeDate;
+      document.getElementById('modal-insurance').textContent = item.insuranceProvider;
+      document.getElementById('modal-medication').textContent = item.medication;
+
+      const testRes = document.getElementById('modal-test-result');
+      testRes.textContent = item.testResult;
+      testRes.className = `font-bold px-2 py-0.5 rounded text-[10px] ${
+        item.testResult === 'Abnormal' ? 'badge-abnormal' : item.testResult === 'Normal' ? 'badge-normal' : 'badge-inconclusive'
+      }`;
+
+      document.getElementById('modal-billing').textContent = '$' + item.billingAmount.toLocaleString();
+
+      document.getElementById('patient-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('patient-modal').classList.add('hidden');
+    }
+
+    function switchTab(tabName) {
+      const tabs = ['overview', 'financial', 'clinical', 'data'];
+      
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        const view = document.getElementById(`view-${t}`);
+
+        if (t === tabName) {
+          btn.className = "px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-darker bg-dracula-purple shadow";
+          view.classList.remove('hidden');
+        } else {
+          btn.className = "px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-dracula-comment hover:text-dracula-fg";
+          view.classList.add('hidden');
+        }
+      });
+    }
+
+    function handleFileUpload(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet);
+
+          if (json && json.length > 0) {
+            // Map imported columns flexibly
+            rawDataset = json.map((row, idx) => {
+              return {
+                id: idx + 1,
+                name: row['Name'] || row['Patient Name'] || row['Patient_Name'] || `Patient #${idx+1}`,
+                age: parseInt(row['Age']) || 40,
+                gender: row['Gender'] || 'Unspecified',
+                bloodType: row['Blood Type'] || row['BloodType'] || 'O+',
+                medicalCondition: row['Medical Condition'] || row['Condition'] || 'General',
+                admissionDate: row['Date of Admission'] || row['Admission Date'] || '2025-01-01',
+                dischargeDate: row['Discharge Date'] || '2025-01-05',
+                lengthOfStay: parseInt(row['Length of Stay']) || 4,
+                doctor: row['Doctor'] || 'Staff Physician',
+                hospital: row['Hospital'] || 'Main Hospital',
+                insuranceProvider: row['Insurance Provider'] || row['Insurance'] || 'Self-Pay',
+                billingAmount: parseFloat(row['Billing Amount']) || parseFloat(row['Billing']) || 1000,
+                roomNumber: row['Room Number'] || 101,
+                admissionType: row['Admission Type'] || 'Elective',
+                medication: row['Medication'] || 'None',
+                testResult: row['Test Results'] || row['Test Result'] || 'Normal'
+              };
+            });
+
+            // Re-initialize
+            populateSlicerOptions();
+            resetAllFilters();
+          }
+        } catch (err) {
+          console.error("Error parsing Excel dataset:", err);
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+
+    function exportTableToCSV() {
+      if (!filteredDataset || filteredDataset.length === 0) return;
+
+      const headers = ["Name", "Age", "Gender", "Blood Type", "Medical Condition", "Admission Date", "Discharge Date", "Doctor", "Hospital", "Insurance", "Billing Amount", "Admission Type", "Test Result"];
+      
+      const rows = filteredDataset.map(d => [
+        `"${d.name}"`, d.age, `"${d.gender}"`, `"${d.bloodType}"`, `"${d.medicalCondition}"`,
+        `"${d.admissionDate}"`, `"${d.dischargeDate}"`, `"${d.doctor}"`, `"${d.hospital}"`,
+        `"${d.insuranceProvider}"`, d.billingAmount, `"${d.admissionType}"`, `"${d.testResult}"`
+      ]);
+
+      const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "dracula_healthcare_export.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
